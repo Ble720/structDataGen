@@ -49,16 +49,12 @@ class GenTabularData(nn.Module):
             embeddings.append(self.bin_embs[i](x_bin[:, i]).unsqueeze(1))
             
         x = torch.cat(embeddings, dim=1)
-
-        #print(f"TRACE 3 (Embeddings): x grad_fn: {x.grad_fn}")
         
         col_indices = torch.arange(self.total_cols, device=x.device).unsqueeze(0).repeat(x.size(0), 1)
         x = x + self.column_embed(col_indices)
         
         with sdpa_kernel([SDPBackend.MATH]):
             z = self.transformer(x)
-
-        #print(f"TRACE 4 (Transformer Out): z grad_fn: {z.grad_fn}")
     
         pred_cat = []
         for i in range(len(self.cat_heads)):

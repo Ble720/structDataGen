@@ -40,20 +40,15 @@ def train_tabular_model(model, uncertainty_net, dataloader, optimizer, accountan
         for batch_idx, batch in enumerate(dataloader):
             batch = [t.to(device) for t in batch]
             x_cat, x_bin, x_off, cat_missing_mask, bin_missing_mask = batch
-            #print(f"TRACE 1 (Input): x_cat requires_grad: {x_cat.requires_grad}")
 
             current_mask_pct = torch.rand(1).item() * (mask_pct[1] - mask_pct[0]) + mask_pct[0]
             x_cat_in, m_cat = apply_fixed_count_mask(x_cat, cat_cards, current_mask_pct)
             x_bin_in, m_bin = apply_fixed_count_mask(x_bin, bin_cards, current_mask_pct)
 
-            #print(f"TRACE 2 (After Mask): x_cat_in grad_fn: {x_cat_in.grad_fn}")
-
             x_cat_in = x_cat_in.to(device)
             x_bin_in = x_bin_in.to(device)
 
             pred_cat, pred_bin, pred_off = model(x_cat_in, x_bin_in)
-
-            #print(f"DEBUG: Pred grad_fn: {pred_cat[0].grad_fn}")
 
             def get_opacus_safe_loss(pred_list, target_tensor, mask_tensor):
                 total_loss_sum = 0
@@ -75,8 +70,6 @@ def train_tabular_model(model, uncertainty_net, dataloader, optimizer, accountan
                 (loss_bin * torch.exp(-uncertainty_net.log_var_bin.detach())) + \
                 (loss_off * torch.exp(-uncertainty_net.log_var_off.detach()))
 
-            #print(f"TRACE 5 (Loss): total_loss_dp grad_fn: {total_loss_dp.grad_fn}")
-            #print(total_loss_dp.grad_fn)
 
             total_loss_dp.backward()
 
@@ -98,7 +91,7 @@ def train_tabular_model(model, uncertainty_net, dataloader, optimizer, accountan
             cur_cat = loss_cat.item()
             cur_bin = loss_bin.item()
             cur_off = loss_off.item()
-            cur_total = cur_cat + cur_bin + cur_off # Simplified total for logging
+            cur_total = cur_cat + cur_bin + cur_off
             
             accum_total_loss += cur_total
             accum_cat_loss += cur_cat
@@ -109,7 +102,6 @@ def train_tabular_model(model, uncertainty_net, dataloader, optimizer, accountan
             saved_grads = {}
             for p in uncertainty_net.parameters():
                 if p.grad is not None:
-                    # We accumulate them manually or just hold them
                     saved_grads[p] = p.grad
                     p.grad = None
 
@@ -200,17 +192,17 @@ def setup(save_path):
 
     return exp_save_path
 
-def main(physical_batch_size, logical_batch_size, learning_rate, epsilon, epochs, save_interval, save_path, device):
+def main(physical_batch_size, logical_batch_size, learning_rate, epsilon, data, config, epochs, save_interval, save_path, device):
     set_seed(42)
 
-    with open('config.json', 'r') as f:
-        config = json.load(f)
+    with open(config, 'r') as f:
+        fconfig = json.load(f)
 
     save_path = setup(save_path)
 
     data_handler = TabularDataHandler(
-        csv_path='./folktables_features.csv',
-        config=config,
+        csv_path=data,
+        config=fconfig,
         batch_size=physical_batch_size
     )
 
@@ -281,6 +273,8 @@ def parse_args():
     parser.add_argument("-lbs", "--logical_batch_size", type=int, default=4096)
     parser.add_argument("-lr", "--learning_rate", type=float, default=5e-4)
     parser.add_argument("-eps", "--epsilon", type=float, default=2.0)
+    parser.add_argument("-da", "--data", type=str, default="./folktables_features.csv")
+    parser.add_argument("-c", "--config", type=str, default="./config.json")
     parser.add_argument("-e", "--epochs", type=int, default=150)
     parser.add_argument("-si", "--save_interval", type=int, default=1000)
     parser.add_argument("-s", "--save_path", type=str, default="./train")
